@@ -1,0 +1,19 @@
+version: '3.8'
+services:
+  matching-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.cpp
+    ports:
+      - "8080:8080"
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    ports:
+      - "8000:8000"
+    depends_on:
+      - matching-engine
+    environment:
+      - ENGINE_HOST=matching-engine

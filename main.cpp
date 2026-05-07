@@ -91,7 +91,18 @@ int main()
         book.match();
 
         // Send Response back to Python
-        std::string response = "Order Processed\n";
+        std::string response;
+        if (book.lastMatchPrice > 0)
+        {
+            response = "MATCH " + std::to_string(book.lastMatchPrice) + " " +
+                       std::to_string(book.lastMatchQty) + "\n";
+            book.lastMatchPrice = 0;
+            book.lastMatchQty = 0;
+        }
+        else
+        {
+            response = "Order Processed\n";
+        }
         send(new_socket, response.c_str(), response.length(), 0);
 
         // Close connection (Simple approach: One connection per order)

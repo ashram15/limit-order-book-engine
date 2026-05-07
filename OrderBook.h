@@ -18,6 +18,8 @@ class OrderBook
     std::map<double, vector<Order *>, greater<double>> bids;
 
 public:
+    double lastMatchPrice = 0;
+    int lastMatchQty = 0;
     void addOrder(Order *order);
     void match();
 };

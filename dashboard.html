@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>HF Matching Engine</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: #0a0a0a;
+            color: #e0e0e0;
+            font-family: 'Courier New', monospace;
+            padding: 1.5rem;
+        }
+
+        header {
+            display: flex;
+            align-items: baseline;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            justify-content: space-between;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: baseline;
+            gap: 1rem;
+        }
+
+        .mode-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .mode-btn,
+        .next-btn {
+            border: 1px solid #2a2a2a;
+            background: #121212;
+            color: #bbb;
+            border-radius: 4px;
+            padding: 0.35rem 0.7rem;
+            font-size: 0.72rem;
+            letter-spacing: 0.06em;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.15s ease;
+        }
+
+        .mode-btn.active {
+            color: #00ff88;
+            border-color: #00ff88;
+            background: #0f1a14;
+        }
+
+        .next-btn {
+            color: #ffd700;
+            border-color: #5a4c1a;
+            background: #171308;
+        }
+
+        .next-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        h1 {
+            font-size: 1rem;
+            color: #00ff88;
+            letter-spacing: 0.05em;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #00ff88;
+            animation: pulse 1s infinite;
+            display: inline-block;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1
+            }
+
+            50% {
+                opacity: 0.3
+            }
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat {
+            background: #111;
+            border: 1px solid #1e1e1e;
+            border-radius: 6px;
+            padding: 1rem;
+        }
+
+        .stat .val {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #00ff88;
+        }
+
+        .stat .label {
+            font-size: 0.7rem;
+            color: #555;
+            margin-top: 4px;
+            letter-spacing: 0.08em;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .panel {
+            background: #111;
+            border: 1px solid #1e1e1e;
+            border-radius: 6px;
+            padding: 1rem;
+        }
+
+        .panel h2 {
+            font-size: 0.7rem;
+            color: #555;
+            letter-spacing: 0.1em;
+            margin-bottom: 1rem;
+        }
+
+        .chart-wrap {
+            position: relative;
+            height: 220px;
+        }
+
+        .book {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+        }
+
+        .book-side h3 {
+            font-size: 0.65rem;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.5rem;
+        }
+
+        .book-side.bids h3 {
+            color: #00c853;
+        }
+
+        .book-side.asks h3 {
+            color: #ff4444;
+        }
+
+        .book-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            padding: 3px 0;
+            border-bottom: 1px solid #1a1a1a;
+            position: relative;
+        }
+
+        .book-row .bar {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            opacity: 0.12;
+            border-radius: 2px;
+        }
+
+        .book-row.bid-row .bar {
+            background: #00c853;
+            right: 0;
+        }
+
+        .book-row.ask-row .bar {
+            background: #ff4444;
+            left: 0;
+        }
+
+        .book-row .price {
+            font-weight: bold;
+            position: relative;
+            z-index: 1;
+        }
+
+        .book-row .qty {
+            color: #888;
+            position: relative;
+            z-index: 1;
+        }
+
+        .trade-log {
+            max-height: 220px;
+            overflow-y: auto;
+        }
+
+        .trade {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            padding: 5px 0;
+            border-bottom: 1px solid #1a1a1a;
+        }
+
+        .trade .match {
+            color: #00ff88;
+        }
+
+        .trade .meta {
+            color: #555;
+        }
+
+        .spread-bar {
+            background: #111;
+            border: 1px solid #1e1e1e;
+            border-radius: 6px;
+            padding: 0.75rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            font-size: 0.8rem;
+        }
+
+        .spread-val {
+            color: #ffd700;
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .step-wrap {
+            margin-top: 1rem;
+        }
+
+        .step-ladders {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .step-book {
+            background: #111;
+            border: 1px solid #1e1e1e;
+            border-radius: 6px;
+            padding: 1rem;
+            min-height: 280px;
+        }
+
+        .step-book.buy-impact {
+            animation: bookBuyPulse 0.55s ease-out;
+        }
+
+        .step-book h2 {
+            font-size: 0.7rem;
+            color: #555;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.8rem;
+        }
+
+        .step-row.best-bid {
+            outline: 1px solid #00ff88;
+            border-radius: 3px;
+        }
+
+        .step-row.best-ask {
+            outline: 1px solid #ff4444;
+            border-radius: 3px;
+        }
+
+        .slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .fade-out {
+            animation: fadeOut 0.5s ease-out forwards;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-8px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeOut {
+            from {
+                opacity: 1;
+            }
+
+            to {
+                opacity: 0;
+            }
+        }
+
+        @keyframes bookBuyPulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(0, 200, 83, 0.45);
+                border-color: #00c853;
+            }
+
+            100% {
+                box-shadow: 0 0 0 16px rgba(0, 200, 83, 0);
+                border-color: #1e1e1e;
+            }
+        }
+
+        .buy-hit {
+            animation: buyRowFlash 0.65s ease-out;
+        }
+
+        @keyframes buyRowFlash {
+            0% {
+                background: rgba(0, 200, 83, 0.35);
+            }
+
+            100% {
+                background: transparent;
+            }
+        }
+
+        .narration {
+            margin-top: 1rem;
+            background: #0b0b0b;
+            border: 1px solid #1f1f1f;
+            border-radius: 6px;
+            padding: 1rem;
+            color: #b9fbc0;
+            font-size: 0.75rem;
+            line-height: 1.45;
+            white-space: pre-wrap;
+            min-height: 140px;
+        }
+
+        .match-banner {
+            margin-top: 0.8rem;
+            background: #0d1410;
+            border: 1px solid #1f3a2b;
+            border-radius: 6px;
+            color: #7dffb5;
+            padding: 0.7rem 1rem;
+            font-size: 0.78rem;
+            opacity: 0;
+            transform: scale(0.98);
+            pointer-events: none;
+        }
+
+        .match-banner.show {
+            animation: matchPulse 0.9s ease-out;
+        }
+
+        @keyframes matchPulse {
+            0% {
+                opacity: 0;
+                transform: scale(0.98);
+            }
+
+            25% {
+                opacity: 1;
+                transform: scale(1.02);
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(1);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <div class="header-left">
+            <span class="dot"></span>
+            <h1>HIGH FREQUENCY ORDER MATCHING ENGINE</h1>
+        </div>
+        <div class="mode-controls">
+            <button class="mode-btn active" id="live-mode-btn">LIVE MODE</button>
+            <button class="mode-btn" id="step-mode-btn">STEP MODE</button>
+            <button class="next-btn hidden" id="next-order-btn">NEXT ORDER</button>
+        </div>
+    </header>
+
+    <div class="stats">
+        <div class="stat">
+            <div class="val" id="throughput">0</div>
+            <div class="label">ORDERS / SEC</div>
+        </div>
+        <div class="stat">
+            <div class="val" id="total">0</div>
+            <div class="label">TOTAL ORDERS</div>
+        </div>
+        <div class="stat">
+            <div class="val" id="matches">0</div>
+            <div class="label">MATCHES EXECUTED</div>
+        </div>
+    </div>
+
+    <div class="spread-bar">
+        <span style="color:#555;font-size:.7rem;letter-spacing:.08em">SPREAD</span>
+        <span class="spread-val" id="spread">—</span>
+        <span style="color:#555;font-size:.7rem">|</span>
+        <span style="color:#555;font-size:.7rem;letter-spacing:.08em">BEST BID PRICE</span>
+        <span id="best-bid" style="color:#00c853;font-weight:bold">—</span>
+        <span style="color:#555;font-size:.7rem;letter-spacing:.08em;margin-left:.5rem">BEST ASK PRICE</span>
+        <span id="best-ask" style="color:#ff4444;font-weight:bold">—</span>
+    </div>
+
+    <div id="live-mode-wrap">
+        <div class="grid" style="margin-top:1rem">
+            <div class="panel">
+                <h2>ORDER BOOK DEPTH</h2>
+                <div class="chart-wrap"><canvas id="depthChart"></canvas></div>
+            </div>
+            <div class="panel">
+                <h2>LIVE ORDER BOOK</h2>
+                <div class="book">
+                    <div class="book-side bids">
+                        <h3>BIDS</h3>
+                        <div id="bid-rows"></div>
+                    </div>
+                    <div class="book-side asks">
+                        <h3>ASKS</h3>
+                        <div id="ask-rows"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid">
+            <div class="panel">
+                <h2>THROUGHPUT</h2>
+                <div class="chart-wrap"><canvas id="tpChart"></canvas></div>
+            </div>
+            <div class="panel">
+                <h2>TRADE LOG</h2>
+                <div class="trade-log" id="trade-log"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="step-wrap hidden" id="step-mode-wrap">
+        <div class="step-ladders">
+            <div class="step-book" id="step-bid-book">
+                <h2>BID LADDER</h2>
+                <div id="step-bid-rows"></div>
+            </div>
+            <div class="step-book">
+                <h2>ASK LADDER</h2>
+                <div id="step-ask-rows"></div>
+            </div>
+        </div>
+        <div class="match-banner" id="match-banner"></div>
+        <div class="narration" id="narration-box">Step mode narration will appear here.</div>
+    </div>
+
+    <script>
+        // --- CHARTS ---
+        const depthChart = new Chart(document.getElementById('depthChart'), {
+            type: 'bar',
+            data: {
+                labels: [], datasets: [
+                    { label: 'Bids', backgroundColor: '#00c85255', borderColor: '#00c853', borderWidth: 1, data: [] },
+                    { label: 'Asks', backgroundColor: '#ff444455', borderColor: '#ff4444', borderWidth: 1, data: [] }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: false,
+                plugins: { legend: { labels: { color: '#555', font: { size: 10 } } } },
+                scales: {
+                    x: { ticks: { color: '#555', font: { size: 9 } }, grid: { color: '#1a1a1a' } },
+                    y: { ticks: { color: '#555', font: { size: 9 } }, grid: { color: '#1a1a1a' } }
+                }
+            }
+        });
+
+        const tpHistory = [];
+        const tpChart = new Chart(document.getElementById('tpChart'), {
+            type: 'line',
+            data: {
+                labels: [], datasets: [{
+                    label: 'Orders/sec', borderColor: '#00ff88', backgroundColor: '#00ff8811',
+                    borderWidth: 1.5, pointRadius: 0, fill: true, tension: 0.4, data: []
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: '#555', font: { size: 9 } }, grid: { color: '#1a1a1a' } },
+                    y: { ticks: { color: '#555', font: { size: 9 } }, grid: { color: '#1a1a1a' }, beginAtZero: true }
+                }
+            }
+        });
+
+        // --- MODE + STEP STATE ---
+        let isStepMode = false;
+        let previousStepBids = {};
+        let previousStepAsks = {};
+        let lastNarratedOrder = null;
+
+        const liveModeBtn = document.getElementById('live-mode-btn');
+        const stepModeBtn = document.getElementById('step-mode-btn');
+        const nextOrderBtn = document.getElementById('next-order-btn');
+        const liveWrap = document.getElementById('live-mode-wrap');
+        const stepWrap = document.getElementById('step-mode-wrap');
+        const matchBanner = document.getElementById('match-banner');
+        const stepBidBook = document.getElementById('step-bid-book');
+
+        async function setMode(step) {
+            await fetch('/mode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ step_mode: step })
+            });
+            isStepMode = step;
+            liveModeBtn.classList.toggle('active', !step);
+            stepModeBtn.classList.toggle('active', step);
+            nextOrderBtn.classList.toggle('hidden', !step);
+            liveWrap.classList.toggle('hidden', step);
+            stepWrap.classList.toggle('hidden', !step);
+        }
+
+        liveModeBtn.onclick = () => setMode(false);
+        stepModeBtn.onclick = () => setMode(true);
+        nextOrderBtn.onclick = async () => {
+            nextOrderBtn.disabled = true;
+            try {
+                await fetch('/next', { method: 'POST' });
+            } finally {
+                setTimeout(() => { nextOrderBtn.disabled = false; }, 250);
+            }
+        };
+
+        function buildStepRows(side, levels, currentBook, previousBook, event) {
+            const maxQty = Math.max(...Object.values(currentBook), 1);
+            const bestPrice = levels.length ? levels[0] : null;
+            const rows = [];
+
+            levels.forEach((p) => {
+                const qty = currentBook[p];
+                const pct = (qty / maxQty * 100).toFixed(0);
+                const prevQty = previousBook[p] || 0;
+                const isNewOrIncreased = qty > prevQty;
+                const baseClass = side === 'B' ? 'bid-row' : 'ask-row';
+                const bestClass = side === 'B' ? (p === bestPrice ? 'best-bid' : '') : (p === bestPrice ? 'best-ask' : '');
+                const isIncomingBuyTarget = side === 'B' && event?.incoming?.side === 'B' && Number(event.incoming.price) === Number(p);
+                rows.push(`<div class="book-row step-row ${baseClass} ${bestClass} ${isNewOrIncreased ? 'slide-in' : ''} ${isIncomingBuyTarget ? 'buy-hit' : ''}">
+      <div class="bar" style="width:${pct}%"></div>
+      <span class="price" style="color:${side === 'B' ? '#00c853' : '#ff4444'}">$${p}</span>
+      <span class="qty">${qty}</span>
+    </div>`);
+            });
+
+            Object.keys(previousBook).forEach((oldPrice) => {
+                if (!(oldPrice in currentBook)) {
+                    rows.push(`<div class="book-row step-row ${side === 'B' ? 'bid-row' : 'ask-row'} fade-out">
+      <div class="bar" style="width:100%"></div>
+      <span class="price" style="color:${side === 'B' ? '#00c853' : '#ff4444'}">$${oldPrice}</span>
+      <span class="qty">0</span>
+    </div>`);
+                }
+            });
+
+            return rows.join('');
+        }
+
+        function getVirtualTopOfBookAfterAdd(event) {
+            const incoming = event?.incoming;
+            const bestBidBefore = event?.best_bid_before;
+            const bestAskBefore = event?.best_ask_before;
+            let virtualBestBid = bestBidBefore;
+            let virtualBestAsk = bestAskBefore;
+
+            if (!incoming) return { virtualBestBid, virtualBestAsk, crossesBook: false };
+
+            if (incoming.side === 'B') {
+                virtualBestBid = bestBidBefore === null ? incoming.price : Math.max(bestBidBefore, incoming.price);
+            } else {
+                virtualBestAsk = bestAskBefore === null ? incoming.price : Math.min(bestAskBefore, incoming.price);
+            }
+
+            const crossesBook = virtualBestBid !== null && virtualBestAsk !== null && virtualBestBid >= virtualBestAsk;
+            return { virtualBestBid, virtualBestAsk, crossesBook };
+        }
+
+        function buildNarration(event) {
+            if (!event || !event.incoming) return;
+            const incoming = event.incoming;
+            const sideText = incoming.side === 'B' ? 'BUY' : 'SELL';
+            const { virtualBestBid, virtualBestAsk, crossesBook } = getVirtualTopOfBookAfterAdd(event);
+
+            const lines = [];
+            lines.push(`New ${sideText} order: ${incoming.qty} shares @ $${incoming.price}`);
+            lines.push(`Best BID is ${virtualBestBid === null ? 'N/A' : `$${virtualBestBid}`} / Best ASK is ${virtualBestAsk === null ? 'N/A' : `$${virtualBestAsk}`} - ${crossesBook ? 'does cross' : 'does not cross'}`);
+
+            if (event.type === 'match') {
+                const buyerWilling = incoming.side === 'B' ? incoming.price : (virtualBestBid ?? event.matched_price);
+                const saved = Math.max(0, buyerWilling - event.matched_price);
+                lines.push(`MATCH: ${event.matched_qty} shares execute at $${event.matched_price} (seller's price). Buyer was willing to pay $${buyerWilling} but only paid $${event.matched_price} - saved $${saved}`);
+                lines.push(`Matched level may disappear immediately from the ladder if it was fully consumed in this same step.`);
+            } else {
+                lines.push(`No match. Order added to ${incoming.side === 'B' ? 'bid' : 'ask'} book at $${incoming.price}, waiting for a counterparty.`);
+            }
+
+            document.getElementById('narration-box').textContent = lines.join('\n');
+        }
+
+        function triggerMatchAnimation(event) {
+            if (!event || event.type !== 'match') return;
+            const sideText = event.incoming?.side === 'B' ? 'BUY' : 'SELL';
+            matchBanner.textContent = `MATCH EXECUTED: ${event.matched_qty} @ $${event.matched_price} from incoming ${sideText} ${event.incoming?.qty} @ $${event.incoming?.price}`;
+            matchBanner.classList.remove('show');
+            void matchBanner.offsetWidth;
+            matchBanner.classList.add('show');
+        }
+
+        function triggerBuyLadderAnimation(event) {
+            if (!event || event.incoming?.side !== 'B') return;
+            stepBidBook.classList.remove('buy-impact');
+            void stepBidBook.offsetWidth;
+            stepBidBook.classList.add('buy-impact');
+        }
+
+        // --- WEBSOCKET ---
+        const ws = new WebSocket(`ws://${location.host}/ws`);
+
+        ws.onmessage = (e) => {
+            const d = JSON.parse(e.data);
+            const bidPrices = d.bids ? Object.keys(d.bids).map(Number).sort((a, b) => b - a) : [];
+            const askPrices = d.asks ? Object.keys(d.asks).map(Number).sort((a, b) => a - b) : [];
+            const bestBid = bidPrices.length ? bidPrices[0] : null;
+            const bestAsk = askPrices.length ? askPrices[0] : null;
+
+            // Stats
+            document.getElementById('throughput').textContent = d.throughput;
+            document.getElementById('total').textContent = d.total_orders;
+            document.getElementById('matches').textContent = d.total_matches;
+
+            // Spread
+            document.getElementById('best-bid').textContent = bestBid === null ? '—' : `$${bestBid}`;
+            document.getElementById('best-ask').textContent = bestAsk === null ? '—' : `$${bestAsk}`;
+            document.getElementById('spread').textContent = (bestBid === null || bestAsk === null)
+                ? '—'
+                : `$${(bestAsk - bestBid).toFixed(2)}`;
+
+            // Depth chart
+            const allPrices = [...new Set([...bidPrices, ...askPrices])].sort((a, b) => a - b);
+            depthChart.data.labels = allPrices.map(p => `$${p}`);
+            depthChart.data.datasets[0].data = allPrices.map(p => d.bids[p] || 0);
+            depthChart.data.datasets[1].data = allPrices.map(p => d.asks[p] || 0);
+            depthChart.update();
+
+            // Throughput history
+            tpHistory.push({ t: new Date().toLocaleTimeString(), v: d.throughput });
+            if (tpHistory.length > 30) tpHistory.shift();
+            tpChart.data.labels = tpHistory.map(x => x.t);
+            tpChart.data.datasets[0].data = tpHistory.map(x => x.v);
+            tpChart.update();
+
+            // Live order book rows
+            const maxBidQty = Math.max(...Object.values(d.bids), 1);
+            const maxAskQty = Math.max(...Object.values(d.asks), 1);
+
+            document.getElementById('bid-rows').innerHTML = bidPrices.slice(0, 8).map(p => {
+                const qty = d.bids[p];
+                const pct = (qty / maxBidQty * 100).toFixed(0);
+                return `<div class="book-row bid-row">
+      <div class="bar" style="width:${pct}%"></div>
+      <span class="price" style="color:#00c853">$${p}</span>
+      <span class="qty">${qty}</span>
+    </div>`;
+            }).join('');
+
+            document.getElementById('ask-rows').innerHTML = askPrices.slice(0, 8).map(p => {
+                const qty = d.asks[p];
+                const pct = (qty / maxAskQty * 100).toFixed(0);
+                return `<div class="book-row ask-row">
+      <div class="bar" style="width:${pct}%"></div>
+      <span class="price" style="color:#ff4444">$${p}</span>
+      <span class="qty">${qty}</span>
+    </div>`;
+            }).join('');
+
+            // Trade log
+            document.getElementById('trade-log').innerHTML = [...d.trades].reverse().map(t =>
+                `<div class="trade">
+      <span class="match">✓ ${t.qty} @ $${t.price}</span>
+      <span class="meta">${t.side === 'B' ? 'BUY' : 'SELL'} · ${t.time}</span>
+    </div>`
+            ).join('');
+
+            // Sync UI mode if backend toggled elsewhere
+            if (typeof d.step_mode === 'boolean' && d.step_mode !== isStepMode) {
+                isStepMode = d.step_mode;
+                liveModeBtn.classList.toggle('active', !isStepMode);
+                stepModeBtn.classList.toggle('active', isStepMode);
+                nextOrderBtn.classList.toggle('hidden', !isStepMode);
+                liveWrap.classList.toggle('hidden', isStepMode);
+                stepWrap.classList.toggle('hidden', !isStepMode);
+            }
+
+            if (isStepMode) {
+                document.getElementById('step-bid-rows').innerHTML = buildStepRows('B', bidPrices, d.bids, previousStepBids, d.event);
+                document.getElementById('step-ask-rows').innerHTML = buildStepRows('S', askPrices, d.asks, previousStepAsks, d.event);
+                previousStepBids = { ...d.bids };
+                previousStepAsks = { ...d.asks };
+
+                const orderKey = d.incoming ? `${d.total_orders}-${d.incoming.side}-${d.incoming.price}-${d.incoming.qty}` : null;
+                if (d.event && orderKey && orderKey !== lastNarratedOrder) {
+                    buildNarration(d.event);
+                    triggerMatchAnimation(d.event);
+                    triggerBuyLadderAnimation(d.event);
+                    lastNarratedOrder = orderKey;
+                }
+            }
+        };
+
+        ws.onclose = () => console.log('WS disconnected');
+    </script>
+</body>
+
+</html>

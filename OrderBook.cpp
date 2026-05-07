@@ -50,6 +50,8 @@ void OrderBook::match()
             // Execute Trade
             cout << "MATCH: " << quantity << " shares at $" << bestAsk << endl;
 
+            lastMatchPrice = bestAsk;
+            lastMatchQty = quantity;
             // Update quantities
             bidOrder->quantity -= quantity;
             askOrder->quantity -= quantity;

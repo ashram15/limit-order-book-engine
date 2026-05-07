@@ -1,107 +1,177 @@
 import socket
 import time
+import os
 import threading
 import random
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
+import json
+import asyncio
+from fastapi import FastAPI, WebSocket
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
+import uvicorn
 
-# --- GLOBAL STATE ---
-# We use lists to track the volume at each price level
-# Format: {price: quantity}
+ENGINE_HOST = os.getenv('ENGINE_HOST', '127.0.0.1')
+
 bids = {}
 asks = {}
+trades = []
+stats = {"throughput": 0, "total_orders": 0, "total_matches": 0}
+state_lock = threading.Lock()
+start_time = time.time()
+step_mode = False
+next_order_event = threading.Event()
+latest_incoming = None
+latest_event = None
 
-# --- NETWORKING THREAD ---
+app = FastAPI()
+
+# --- MARKET MAKER (your existing logic, minimally changed) ---
 
 
 def market_maker():
-    """ This function runs in the background, spamming orders to the C++ engine. """
     print("✅ Trader Algorithm Started...")
-
     while True:
         try:
-            # 1. Generate a Random Order
-            side = random.choice(["B", "S"])
+            if step_mode:
+                next_order_event.wait()
+                next_order_event.clear()
 
-            # Tighter spread to force more matches
+            side = random.choice(["B", "S"])
             if side == "B":
                 price = random.randint(95, 102)
             else:
                 price = random.randint(98, 105)
-
             qty = random.randint(1, 10)
+            incoming = {"side": side, "price": price, "qty": qty}
 
-            # 2. Update Local View (Graph)
-            if side == "B":
-                bids[price] = bids.get(price, 0) + qty
-            else:
-                asks[price] = asks.get(price, 0) + qty
-
-            # 3. Send to C++ Engine (New Connection Every Time)
-            # We open a NEW socket for every order because the C++ server closes it after 1 msg.
+            # Send to C++ engine (your existing protocol, unchanged)
             client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client.connect(('127.0.0.1', 8080))
-
+            client.connect((ENGINE_HOST, 8080))
             msg = f"{side} {price} {qty}"
             client.send(msg.encode('utf-8'))
+            response = client.recv(1024).decode(
+                'utf-8').strip()  # NOW we read response
+            client.close()
 
-            # Optional: Read response if you want to be sure it arrived
-            # response = client.recv(1024)
+            # Update state based on response
+            with state_lock:
+                global latest_incoming, latest_event
+                latest_incoming = incoming
+                best_bid_before = max(bids.keys()) if bids else None
+                best_ask_before = min(asks.keys()) if asks else None
+                stats["total_orders"] += 1
+                elapsed = time.time() - start_time
+                stats["throughput"] = round(stats["total_orders"] / elapsed, 1)
 
-            client.close()  # Clean up connection
+                if response.startswith("MATCH"):
+                    parts = response.split()
+                    matched_price = int(float(parts[1]))
+                    matched_qty = int(parts[2])
+
+                    stats["total_matches"] += 1
+                    trades.append({
+                        "price": matched_price,
+                        "qty": matched_qty,
+                        "side": side,
+                        "time": time.strftime("%H:%M:%S")
+                    })
+                    if len(trades) > 20:
+                        trades.pop(0)
+                    latest_event = {
+                        "type": "match",
+                        "incoming": incoming,
+                        "matched_price": matched_price,
+                        "matched_qty": matched_qty,
+                        "best_bid_before": best_bid_before,
+                        "best_ask_before": best_ask_before
+                    }
+
+                    # now we know EXACTLY which price level to remove from
+                    if matched_price in bids:
+                        bids[matched_price] = max(
+                            0, bids[matched_price] - matched_qty)
+                        if bids[matched_price] == 0:
+                            del bids[matched_price]
+                    if matched_price in asks:
+                        asks[matched_price] = max(
+                            0, asks[matched_price] - matched_qty)
+                        if asks[matched_price] == 0:
+                            del asks[matched_price]
+                else:
+                    # Order resting in book — add to local state
+                    book = bids if side == "B" else asks
+                    book[price] = book.get(price, 0) + qty
+                    latest_event = {
+                        "type": "rest",
+                        "incoming": incoming,
+                        "best_bid_before": best_bid_before,
+                        "best_ask_before": best_ask_before
+                    }
 
         except Exception as e:
-            print(f"⚠️ Error sending order: {e}")
-            time.sleep(1)  # Wait a bit before retrying if server is down
+            print(f"⚠️ Error: {e}")
+            time.sleep(1)
             continue
 
-        time.sleep(0.1)  # Fast trading speed
-# --- VISUALIZATION ---
+        time.sleep(2.0 if step_mode else 0.1)
 
 
-def update_graph(frame):
-    """ This runs every 100ms to redraw the graph """
-    plt.cla()  # Clear axis
+# --- WEBSOCKET (replaces matplotlib) ---~
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            with state_lock:
+                payload = {
+                    "bids": dict(sorted(bids.items(), reverse=True)[:10]),
+                    "asks": dict(sorted(asks.items())[:10]),
+                    "trades": list(trades),
+                    "throughput": stats["throughput"],
+                    "total_orders": stats["total_orders"],
+                    "total_matches": stats["total_matches"],
+                    "incoming": latest_incoming,
+                    "event": latest_event,
+                    "step_mode": step_mode
+                }
+            await websocket.send_text(json.dumps(payload))
+            await asyncio.sleep(0.2)
+    except Exception as e:
+        print(f"WebSocket error: {e}")
 
-    # Plot Bids (Green)
-    if bids:
-        sorted_bids = sorted(bids.items())  # Sort by price
-        prices = [p for p, q in sorted_bids]
-        qtys = [q for p, q in sorted_bids]
-        plt.bar(prices, qtys, color='green', alpha=0.6, label='Bids (Buyers)')
 
-    # Plot Asks (Red)
-    if asks:
-        sorted_asks = sorted(asks.items())
-        prices = [p for p, q in sorted_asks]
-        qtys = [q for p, q in sorted_asks]
-        plt.bar(prices, qtys, color='red', alpha=0.6, label='Asks (Sellers)')
+@app.get("/")
+async def dashboard():
+    return HTMLResponse(open("dashboard.html").read())
 
-    plt.title('Live Limit Order Book Depth')
-    plt.xlabel('Price ($)')
-    plt.ylabel('Volume (Qty)')
-    plt.legend(loc='upper right')
-    plt.grid(True, linestyle='--', alpha=0.3)
+
+class ModeRequest(BaseModel):
+    step_mode: bool
+
+
+@app.post("/mode")
+async def set_mode(req: ModeRequest):
+    global step_mode
+    step_mode = req.step_mode
+    if not step_mode:
+        next_order_event.set()
+    return {"step_mode": step_mode}
+
+
+@app.post("/next")
+async def next_order():
+    if step_mode:
+        next_order_event.set()
+        return {"queued": True}
+    return {"queued": False, "message": "Step mode is not enabled"}
+
+
+@app.on_event("startup")
+async def startup():
+    next_order_event.set()
+    t = threading.Thread(target=market_maker, daemon=True)
+    t.start()
 
 
 if __name__ == "__main__":
-    # 1. Start the Trader in a background thread
-    t = threading.Thread(target=market_maker)
-    t.daemon = True  # Kills thread when main program exits
-    t.start()
-
-    # 2. Start the Live Graph (Main Thread)
-    fig = plt.figure(figsize=(10, 6))
-    ani = FuncAnimation(fig, update_graph, interval=200)  # Update every 200ms
-    plt.show()
-
-
-# ### 🚀 How to Run the Visualization
-
-# 1.  **Start your C++ Server** (Terminal 1):
-#     ```bash
-#     ./matching_server
-#     ```
-# 2.  **Start the Visualizer** (Terminal 2):
-#     ```bash
-#     python3 client_viz.py
+    uvicorn.run(app, host="0.0.0.0", port=8000)
