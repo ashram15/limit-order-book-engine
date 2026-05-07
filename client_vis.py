@@ -22,6 +22,10 @@ step_mode = False
 next_order_event = threading.Event()
 latest_incoming = None
 latest_event = None
+is_running = False
+market_maker_thread = None
+active_ws_session = 0
+live_delay = 0.3
 
 app = FastAPI()
 
@@ -29,8 +33,18 @@ app = FastAPI()
 
 
 def market_maker():
+    global latest_incoming, latest_event
     print("✅ Trader Algorithm Started...")
-    while True:
+    with state_lock:
+        bids.clear()
+        asks.clear()
+        trades.clear()
+        stats["throughput"] = 0
+        stats["total_orders"] = 0
+        stats["total_matches"] = 0
+        latest_incoming = None
+        latest_event = None
+    while is_running:
         try:
             if step_mode:
                 next_order_event.wait()
@@ -55,7 +69,6 @@ def market_maker():
 
             # Update state based on response
             with state_lock:
-                global latest_incoming, latest_event
                 latest_incoming = incoming
                 best_bid_before = max(bids.keys()) if bids else None
                 best_ask_before = min(asks.keys()) if asks else None
@@ -108,18 +121,33 @@ def market_maker():
                         "best_ask_before": best_ask_before
                     }
 
+                # Keep only top 15 levels per side
+                if len(bids) > 15:
+                    for p in sorted(bids)[:-15]:
+                        del bids[p]
+                if len(asks) > 15:
+                    for p in sorted(asks, reverse=True)[:-15]:
+                        del asks[p]
+
         except Exception as e:
             print(f"⚠️ Error: {e}")
             time.sleep(1)
             continue
 
-        time.sleep(2.0 if step_mode else 0.1)
+        time.sleep(2.0 if step_mode else live_delay)
 
 
 # --- WEBSOCKET (replaces matplotlib) ---~
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    global is_running, market_maker_thread, start_time, latest_incoming, latest_event, active_ws_session
     await websocket.accept()
+    active_ws_session += 1
+    my_session = active_ws_session
+    is_running = True
+    start_time = time.time()
+    market_maker_thread = threading.Thread(target=market_maker, daemon=True)
+    market_maker_thread.start()
     try:
         while True:
             with state_lock:
@@ -138,6 +166,20 @@ async def websocket_endpoint(websocket: WebSocket):
             await asyncio.sleep(0.2)
     except Exception as e:
         print(f"WebSocket error: {e}")
+    finally:
+        if my_session != active_ws_session:
+            return
+        is_running = False
+        next_order_event.set()
+        with state_lock:
+            bids.clear()
+            asks.clear()
+            trades.clear()
+            stats["throughput"] = 0
+            stats["total_orders"] = 0
+            stats["total_matches"] = 0
+            latest_incoming = None
+            latest_event = None
 
 
 @app.get("/")
@@ -147,6 +189,10 @@ async def dashboard():
 
 class ModeRequest(BaseModel):
     step_mode: bool
+
+
+class SpeedRequest(BaseModel):
+    speed_ms: int
 
 
 @app.post("/mode")
@@ -166,11 +212,17 @@ async def next_order():
     return {"queued": False, "message": "Step mode is not enabled"}
 
 
+@app.post("/speed")
+async def set_speed(req: SpeedRequest):
+    global live_delay
+    speed_ms = max(50, min(2000, req.speed_ms))
+    live_delay = speed_ms / 1000.0
+    return {"speed_ms": speed_ms}
+
+
 @app.on_event("startup")
 async def startup():
     next_order_event.set()
-    t = threading.Thread(target=market_maker, daemon=True)
-    t.start()
 
 
 if __name__ == "__main__":

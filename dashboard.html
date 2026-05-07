@@ -38,6 +38,23 @@
             gap: 0.6rem;
         }
 
+        .speed-wrap {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.2rem 0.45rem;
+            border: 1px solid #2a2a2a;
+            border-radius: 4px;
+            background: #121212;
+            color: #bbb;
+            font-size: 0.68rem;
+            letter-spacing: 0.05em;
+        }
+
+        .speed-wrap input[type="range"] {
+            width: 120px;
+        }
+
         .mode-btn,
         .next-btn {
             border: 1px solid #2a2a2a;
@@ -391,6 +408,68 @@
                 transform: scale(1);
             }
         }
+
+        /* Light theme overrides */
+        body.light-mode {
+            background: #f6f7fb;
+            color: #1f2937;
+        }
+
+        body.light-mode .mode-btn,
+        body.light-mode .next-btn {
+            background: #ffffff;
+            color: #374151;
+            border-color: #d1d5db;
+        }
+
+        body.light-mode .mode-btn.active {
+            color: #0f8f53;
+            border-color: #0f8f53;
+            background: #ecfdf3;
+        }
+
+        body.light-mode .stat,
+        body.light-mode .panel,
+        body.light-mode .spread-bar,
+        body.light-mode .step-book,
+        body.light-mode .narration {
+            background: #ffffff;
+            border-color: #dbe1ea;
+        }
+
+        body.light-mode .stat .label,
+        body.light-mode .panel h2,
+        body.light-mode .spread-bar span,
+        body.light-mode .trade .meta {
+            color: #6b7280 !important;
+        }
+
+        body.light-mode .book-row,
+        body.light-mode .trade {
+            border-bottom-color: #e5e7eb;
+        }
+
+        body.light-mode .speed-wrap {
+            background: #ffffff;
+            color: #374151;
+            border-color: #d1d5db;
+        }
+
+        body.light-mode h1 {
+            color: #0f8f53;
+        }
+
+        body.light-mode .dot {
+            background: #0f8f53;
+        }
+
+        body.light-mode .stat .val {
+            color: #0f8f53;
+        }
+
+        body.light-mode .narration {
+            color: #0f8f53;
+        }
     </style>
 </head>
 
@@ -405,6 +484,12 @@
             <button class="mode-btn active" id="live-mode-btn">LIVE MODE</button>
             <button class="mode-btn" id="step-mode-btn">STEP MODE</button>
             <button class="next-btn hidden" id="next-order-btn">NEXT ORDER</button>
+            <div class="speed-wrap">
+                <span>SPEED</span>
+                <input id="speed-slider" type="range" min="50" max="1000" step="50" value="300">
+                <span id="speed-value">300ms</span>
+            </div>
+            <button class="mode-btn" id="theme-btn">LIGHT MODE</button>
         </div>
     </header>
 
@@ -529,10 +614,48 @@
         const liveModeBtn = document.getElementById('live-mode-btn');
         const stepModeBtn = document.getElementById('step-mode-btn');
         const nextOrderBtn = document.getElementById('next-order-btn');
+        const speedSlider = document.getElementById('speed-slider');
+        const speedValue = document.getElementById('speed-value');
+        const themeBtn = document.getElementById('theme-btn');
         const liveWrap = document.getElementById('live-mode-wrap');
         const stepWrap = document.getElementById('step-mode-wrap');
         const matchBanner = document.getElementById('match-banner');
         const stepBidBook = document.getElementById('step-bid-book');
+
+        function setTheme(isLight) {
+            document.body.classList.toggle('light-mode', isLight);
+            themeBtn.textContent = isLight ? 'DARK MODE' : 'LIGHT MODE';
+            localStorage.setItem('hf_theme', isLight ? 'light' : 'dark');
+        }
+
+        setTheme(localStorage.getItem('hf_theme') !== 'dark');
+        themeBtn.onclick = () => {
+            setTheme(!document.body.classList.contains('light-mode'));
+        };
+
+        const savedSpeed = Number(localStorage.getItem('hf_speed_ms') || 300);
+        speedSlider.value = String(savedSpeed);
+        speedValue.textContent = `${savedSpeed}ms`;
+        fetch('/speed', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ speed_ms: savedSpeed })
+        }).catch(() => { });
+
+        speedSlider.oninput = async () => {
+            const ms = Number(speedSlider.value);
+            speedValue.textContent = `${ms}ms`;
+            localStorage.setItem('hf_speed_ms', String(ms));
+            try {
+                await fetch('/speed', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ speed_ms: ms })
+                });
+            } catch (e) {
+                console.log('Speed update failed');
+            }
+        };
 
         async function setMode(step) {
             await fetch('/mode', {
@@ -650,10 +773,15 @@
         }
 
         // --- WEBSOCKET ---
-        const ws = new WebSocket(`ws://${location.host}/ws`);
+        let ws = null;
+        let reconnectTimer = null;
 
-        ws.onmessage = (e) => {
-            const d = JSON.parse(e.data);
+        function connectWebSocket() {
+            const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+            ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+            ws.onmessage = (e) => {
+                const d = JSON.parse(e.data);
             const bidPrices = d.bids ? Object.keys(d.bids).map(Number).sort((a, b) => b - a) : [];
             const askPrices = d.asks ? Object.keys(d.asks).map(Number).sort((a, b) => a - b) : [];
             const bestBid = bidPrices.length ? bidPrices[0] : null;
@@ -741,9 +869,16 @@
                     lastNarratedOrder = orderKey;
                 }
             }
-        };
+            };
 
-        ws.onclose = () => console.log('WS disconnected');
+            ws.onclose = () => {
+                console.log('WS disconnected');
+                if (reconnectTimer) clearTimeout(reconnectTimer);
+                reconnectTimer = setTimeout(connectWebSocket, 500);
+            };
+        }
+
+        connectWebSocket();
     </script>
 </body>
 
