@@ -27,7 +27,7 @@ if __name__ == "__main__":
     send_order("S", 100, 10)
     time.sleep(1)
 
-    # Test 2: Add a Buyer (Should Match!)
+    # Test 2: Add a Buyer (they should match)
     send_order("B", 100, 5)
 
     # Test 3: Spam random orders

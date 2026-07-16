@@ -29,7 +29,7 @@ live_delay = 0.3
 
 app = FastAPI()
 
-# --- MARKET MAKER (your existing logic, minimally changed) ---
+# MARKET MAKER
 
 
 def market_maker():
@@ -137,7 +137,7 @@ def market_maker():
         time.sleep(2.0 if step_mode else live_delay)
 
 
-# --- WEBSOCKET (replaces matplotlib) ---~
+# --- WEBSOCKET (instead of matplotlib) ---~
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     global is_running, market_maker_thread, start_time, latest_incoming, latest_event, active_ws_session

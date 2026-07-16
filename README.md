@@ -1,4 +1,4 @@
-# High-Frequency Order Matching Engine
+# Limit Order Book Engine
 
 A low-latency order matching engine built in C++ with a Python/FastAPI dashboard for live visualization.  
 This project now runs as a two-container stack (matching engine + dashboard) and is deployed on AWS EC2 using Docker Compose.
