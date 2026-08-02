@@ -12,6 +12,10 @@ This project now runs as a two-container stack (matching engine + dashboard) and
 - AWS EC2 deployment workflow
 - Browser dashboard served from FastAPI with live WebSocket updates
 
+## Motivation 
+I built this project to better understand how high frequency trading works, to build OrderBook objects in C++ using OOP, and build low latency socket servers 
+and optimized data structures like red-black trees in C++. 
+
 ## Features
 
 - **Fast C++ Matching Engine** - Efficient limit order book and matching logic
@@ -20,9 +24,23 @@ This project now runs as a two-container stack (matching engine + dashboard) and
 - **FastAPI Dashboard Service** - Web UI and WebSocket stream on `8000`
 - **Containerized Deployment** - One-command startup via Docker Compose
 
-## Architecture
+### Matching Model
 
-### Services
+- **Bids (buy orders):** sorted high to low
+- **Asks (sell orders):** sorted low to high
+- A trade occurs when bid price >= ask price, executed according to the engine rules.
+
+## Architecture Overview
+
+```text
+User -> Python FastAPI Dashboard -> TCP order messages -> C++ Matching Engine -> Browser over WebSocket
+```
+
+- The dashboard generates orders, forwards them to the C++ engine over TCP, and renders the live book state and trade updates in the browser over WebSocket.
+- The engine owns the matching logic and price-time priority rules.
+- The Python service is responsible for orchestration, state display, and user interaction.
+
+## Usage
 
 - **matching-engine** (`Dockerfile.cpp`)  
   Compiles and runs the C++ engine (`main.cpp`, `OrderBook.cpp`) on port `8080`.
@@ -32,11 +50,6 @@ This project now runs as a two-container stack (matching engine + dashboard) and
 `docker-compose.yml` connects both services on an internal Docker network and sets:
 - `ENGINE_HOST=matching-engine` so the dashboard can send orders to the engine container.
 
-### Matching Model
-
-- **Bids (buy orders):** sorted high to low
-- **Asks (sell orders):** sorted low to high
-- A trade occurs when bid price >= ask price, executed according to the engine rules.
 
 ## Quick Start (Docker Compose)
 
@@ -103,7 +116,7 @@ docker compose logs -f
 
 Then open: `http://<EC2_PUBLIC_IP>:8000`
 
-## Local Non-Docker Run (Optional)
+## Local Non-Docker Run 
 
 If you want to run directly without containers:
 
@@ -120,6 +133,24 @@ python3 client_vis.py
 ```
 
 Open `http://127.0.0.1:8000`.
+
+## One-Shot Throughput Benchmark
+
+This project does not have a built-in server-side TPS counter, so the practical way to measure throughput is to run a synthetic client against the live engine and time end-to-end request handling.
+
+Start the C++ engine, then run:
+
+```bash
+python3 benchmark.py --orders 10000 --warmup 500
+```
+
+For a match-heavy workload, add `--crosses`:
+
+```bash
+python3 benchmark.py --orders 10000 --warmup 500 --crosses
+```
+
+The script reports measured orders/sec and average latency per order. Because this engine handles one TCP connection per order on a single accept loop, the number is best treated as an end-to-end benchmark for this exact deployment.
 
 ## Order Protocol
 
@@ -149,19 +180,3 @@ high_frequency_order_matching/
 ├── docker-compose.yml
 └── README.md
 ```
-
-## Troubleshooting
-
-- If Docker permission errors appear on EC2, re-login after adding your user to the `docker` group.
-- If dashboard does not load, check that port `8000` is open in security groups and not blocked by instance firewall.
-- If containers fail to start, inspect logs:
-
-```bash
-docker compose logs matching-engine
-docker compose logs dashboard
-```
-
-## License
-
-This project is open source and available for educational purposes.
-
