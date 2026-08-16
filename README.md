@@ -18,7 +18,7 @@ and optimized data structures like red-black trees in C++.
 
 ## Performance 
 - Constant throughput (1850 orders/sec) as load scaled 10x from 10K to 100K orders.
-- Sub ms latency for mock orders.
+- Sub ms latency (0.52-0.54 ms) for each order.
 
 ## Features
 
