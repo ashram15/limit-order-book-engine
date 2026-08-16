@@ -2,7 +2,7 @@
 <html>
 
 <head>
-    <title>HF Matching Engine</title>
+    <title>Limit Order Book Engine</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
     <style>
         * {
@@ -478,7 +478,7 @@
     <header>
         <div class="header-left">
             <span class="dot"></span>
-            <h1>HIGH FREQUENCY ORDER MATCHING ENGINE</h1>
+            <h1>LIMIT ORDER BOOK ENGINE</h1>
         </div>
         <div class="mode-controls">
             <button class="mode-btn active" id="live-mode-btn">LIVE MODE</button>
@@ -782,93 +782,93 @@
 
             ws.onmessage = (e) => {
                 const d = JSON.parse(e.data);
-            const bidPrices = d.bids ? Object.keys(d.bids).map(Number).sort((a, b) => b - a) : [];
-            const askPrices = d.asks ? Object.keys(d.asks).map(Number).sort((a, b) => a - b) : [];
-            const bestBid = bidPrices.length ? bidPrices[0] : null;
-            const bestAsk = askPrices.length ? askPrices[0] : null;
+                const bidPrices = d.bids ? Object.keys(d.bids).map(Number).sort((a, b) => b - a) : [];
+                const askPrices = d.asks ? Object.keys(d.asks).map(Number).sort((a, b) => a - b) : [];
+                const bestBid = bidPrices.length ? bidPrices[0] : null;
+                const bestAsk = askPrices.length ? askPrices[0] : null;
 
-            // Stats
-            document.getElementById('throughput').textContent = d.throughput;
-            document.getElementById('total').textContent = d.total_orders;
-            document.getElementById('matches').textContent = d.total_matches;
+                // Stats
+                document.getElementById('throughput').textContent = d.throughput;
+                document.getElementById('total').textContent = d.total_orders;
+                document.getElementById('matches').textContent = d.total_matches;
 
-            // Spread
-            document.getElementById('best-bid').textContent = bestBid === null ? '—' : `$${bestBid}`;
-            document.getElementById('best-ask').textContent = bestAsk === null ? '—' : `$${bestAsk}`;
-            document.getElementById('spread').textContent = (bestBid === null || bestAsk === null)
-                ? '—'
-                : `$${(bestAsk - bestBid).toFixed(2)}`;
+                // Spread
+                document.getElementById('best-bid').textContent = bestBid === null ? '—' : `$${bestBid}`;
+                document.getElementById('best-ask').textContent = bestAsk === null ? '—' : `$${bestAsk}`;
+                document.getElementById('spread').textContent = (bestBid === null || bestAsk === null)
+                    ? '—'
+                    : `$${(bestAsk - bestBid).toFixed(2)}`;
 
-            // Depth chart
-            const allPrices = [...new Set([...bidPrices, ...askPrices])].sort((a, b) => a - b);
-            depthChart.data.labels = allPrices.map(p => `$${p}`);
-            depthChart.data.datasets[0].data = allPrices.map(p => d.bids[p] || 0);
-            depthChart.data.datasets[1].data = allPrices.map(p => d.asks[p] || 0);
-            depthChart.update();
+                // Depth chart
+                const allPrices = [...new Set([...bidPrices, ...askPrices])].sort((a, b) => a - b);
+                depthChart.data.labels = allPrices.map(p => `$${p}`);
+                depthChart.data.datasets[0].data = allPrices.map(p => d.bids[p] || 0);
+                depthChart.data.datasets[1].data = allPrices.map(p => d.asks[p] || 0);
+                depthChart.update();
 
-            // Throughput history
-            tpHistory.push({ t: new Date().toLocaleTimeString(), v: d.throughput });
-            if (tpHistory.length > 30) tpHistory.shift();
-            tpChart.data.labels = tpHistory.map(x => x.t);
-            tpChart.data.datasets[0].data = tpHistory.map(x => x.v);
-            tpChart.update();
+                // Throughput history
+                tpHistory.push({ t: new Date().toLocaleTimeString(), v: d.throughput });
+                if (tpHistory.length > 30) tpHistory.shift();
+                tpChart.data.labels = tpHistory.map(x => x.t);
+                tpChart.data.datasets[0].data = tpHistory.map(x => x.v);
+                tpChart.update();
 
-            // Live order book rows
-            const maxBidQty = Math.max(...Object.values(d.bids), 1);
-            const maxAskQty = Math.max(...Object.values(d.asks), 1);
+                // Live order book rows
+                const maxBidQty = Math.max(...Object.values(d.bids), 1);
+                const maxAskQty = Math.max(...Object.values(d.asks), 1);
 
-            document.getElementById('bid-rows').innerHTML = bidPrices.slice(0, 8).map(p => {
-                const qty = d.bids[p];
-                const pct = (qty / maxBidQty * 100).toFixed(0);
-                return `<div class="book-row bid-row">
+                document.getElementById('bid-rows').innerHTML = bidPrices.slice(0, 8).map(p => {
+                    const qty = d.bids[p];
+                    const pct = (qty / maxBidQty * 100).toFixed(0);
+                    return `<div class="book-row bid-row">
       <div class="bar" style="width:${pct}%"></div>
       <span class="price" style="color:#00c853">$${p}</span>
       <span class="qty">${qty}</span>
     </div>`;
-            }).join('');
+                }).join('');
 
-            document.getElementById('ask-rows').innerHTML = askPrices.slice(0, 8).map(p => {
-                const qty = d.asks[p];
-                const pct = (qty / maxAskQty * 100).toFixed(0);
-                return `<div class="book-row ask-row">
+                document.getElementById('ask-rows').innerHTML = askPrices.slice(0, 8).map(p => {
+                    const qty = d.asks[p];
+                    const pct = (qty / maxAskQty * 100).toFixed(0);
+                    return `<div class="book-row ask-row">
       <div class="bar" style="width:${pct}%"></div>
       <span class="price" style="color:#ff4444">$${p}</span>
       <span class="qty">${qty}</span>
     </div>`;
-            }).join('');
+                }).join('');
 
-            // Trade log
-            document.getElementById('trade-log').innerHTML = [...d.trades].reverse().map(t =>
-                `<div class="trade">
+                // Trade log
+                document.getElementById('trade-log').innerHTML = [...d.trades].reverse().map(t =>
+                    `<div class="trade">
       <span class="match">✓ ${t.qty} @ $${t.price}</span>
       <span class="meta">${t.side === 'B' ? 'BUY' : 'SELL'} · ${t.time}</span>
     </div>`
-            ).join('');
+                ).join('');
 
-            // Sync UI mode if backend toggled elsewhere
-            if (typeof d.step_mode === 'boolean' && d.step_mode !== isStepMode) {
-                isStepMode = d.step_mode;
-                liveModeBtn.classList.toggle('active', !isStepMode);
-                stepModeBtn.classList.toggle('active', isStepMode);
-                nextOrderBtn.classList.toggle('hidden', !isStepMode);
-                liveWrap.classList.toggle('hidden', isStepMode);
-                stepWrap.classList.toggle('hidden', !isStepMode);
-            }
-
-            if (isStepMode) {
-                document.getElementById('step-bid-rows').innerHTML = buildStepRows('B', bidPrices, d.bids, previousStepBids, d.event);
-                document.getElementById('step-ask-rows').innerHTML = buildStepRows('S', askPrices, d.asks, previousStepAsks, d.event);
-                previousStepBids = { ...d.bids };
-                previousStepAsks = { ...d.asks };
-
-                const orderKey = d.incoming ? `${d.total_orders}-${d.incoming.side}-${d.incoming.price}-${d.incoming.qty}` : null;
-                if (d.event && orderKey && orderKey !== lastNarratedOrder) {
-                    buildNarration(d.event);
-                    triggerMatchAnimation(d.event);
-                    triggerBuyLadderAnimation(d.event);
-                    lastNarratedOrder = orderKey;
+                // Sync UI mode if backend toggled elsewhere
+                if (typeof d.step_mode === 'boolean' && d.step_mode !== isStepMode) {
+                    isStepMode = d.step_mode;
+                    liveModeBtn.classList.toggle('active', !isStepMode);
+                    stepModeBtn.classList.toggle('active', isStepMode);
+                    nextOrderBtn.classList.toggle('hidden', !isStepMode);
+                    liveWrap.classList.toggle('hidden', isStepMode);
+                    stepWrap.classList.toggle('hidden', !isStepMode);
                 }
-            }
+
+                if (isStepMode) {
+                    document.getElementById('step-bid-rows').innerHTML = buildStepRows('B', bidPrices, d.bids, previousStepBids, d.event);
+                    document.getElementById('step-ask-rows').innerHTML = buildStepRows('S', askPrices, d.asks, previousStepAsks, d.event);
+                    previousStepBids = { ...d.bids };
+                    previousStepAsks = { ...d.asks };
+
+                    const orderKey = d.incoming ? `${d.total_orders}-${d.incoming.side}-${d.incoming.price}-${d.incoming.qty}` : null;
+                    if (d.event && orderKey && orderKey !== lastNarratedOrder) {
+                        buildNarration(d.event);
+                        triggerMatchAnimation(d.event);
+                        triggerBuyLadderAnimation(d.event);
+                        lastNarratedOrder = orderKey;
+                    }
+                }
             };
 
             ws.onclose = () => {
