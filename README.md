@@ -3,7 +3,7 @@
 A low-latency order matching engine built in C++ with a Python/FastAPI dashboard for live visualization.  
 This project now runs as a two-container stack (matching engine + dashboard) and is deployed on AWS EC2 using Docker Compose.
 
-![Demo](assets/demo_hfom.gif)
+![Demo](assets/LIVE_MODE.gif)
 
 ## What's New
 
@@ -20,9 +20,14 @@ and optimized data structures like red-black trees in C++.
 
 - **Fast C++ Matching Engine** - Efficient limit order book and matching logic
 - **Price-Time Priority** - Best price first, FIFO within each price level
+- **Live-Order-Matching Mode** - Displays live order matching process, showing live throughput and number of orders processed. 
+- **Instructional Step Mode** - Shows each step in the order matching process. This can be used to learn about how orders are matched depending on price-time-priority. 
+![Step_Mode](assets/STEP_MODE.gif)
+
 - **TCP Engine Service** - C++ engine listening on `8080`
 - **FastAPI Dashboard Service** - Web UI and WebSocket stream on `8000`
 - **Containerized Deployment** - One-command startup via Docker Compose
+- **Light/Dark Mode** - Users can choose light/dark mode depending on preferences. 
 
 ### Matching Model
 
