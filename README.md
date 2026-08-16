@@ -77,7 +77,7 @@ docker compose up --build
 docker compose down
 ```
 
-## AWS EC2 Deployment
+<!-- ## AWS EC2 Deployment
 
 ### EC2 setup (one-time)
 
@@ -114,7 +114,7 @@ docker compose ps
 docker compose logs -f
 ```
 
-Then open: `http://<EC2_PUBLIC_IP>:8000`
+Then open: `http://<EC2_PUBLIC_IP>:8000` -->
 
 ## Local Non-Docker Run 
 
