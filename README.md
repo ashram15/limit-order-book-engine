@@ -56,8 +56,8 @@ User -> Python FastAPI Dashboard -> TCP order messages -> C++ Matching Engine ->
 ### 1. Clone and enter the project
 
 ```bash
-git clone <your-repo-url>
-cd high_frequency_order_matching
+git clone git@github.com:ashram15/limit-order-book-engine.git
+cd limit-order-book-engine
 ```
 
 ### 2. Build and start both services
