@@ -4,6 +4,25 @@
 
 using namespace std;
 
+OrderBook::~OrderBook()
+{
+    for (auto &priceLevel : asks)
+    {
+        for (Order *order : priceLevel.second)
+        {
+            delete order;
+        }
+    }
+
+    for (auto &priceLevel : bids)
+    {
+        for (Order *order : priceLevel.second)
+        {
+            delete order;
+        }
+    }
+}
+
 void OrderBook::addOrder(Order *order)
 {
     if (order->type == OrderType::SELL)

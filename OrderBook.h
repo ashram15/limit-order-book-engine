@@ -20,6 +20,8 @@ class OrderBook
 public:
     double lastMatchPrice = 0;
     int lastMatchQty = 0;
+    ~OrderBook();
+
     void addOrder(Order *order);
     void match();
 };
